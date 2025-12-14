@@ -462,13 +462,14 @@ func applyUpdatesToIssue(issue *types.Issue, updates map[string]interface{}) {
 }
 
 // CloseIssue closes an issue within the transaction.
+// NOTE: close_reason is stored in both issues table and events table - see SQLiteStorage.CloseIssue.
 func (t *sqliteTxStorage) CloseIssue(ctx context.Context, id string, reason string, actor string) error {
 	now := time.Now()
 
 	result, err := t.conn.ExecContext(ctx, `
-		UPDATE issues SET status = ?, closed_at = ?, updated_at = ?
+		UPDATE issues SET status = ?, closed_at = ?, updated_at = ?, close_reason = ?
 		WHERE id = ?
-	`, types.StatusClosed, now, now, id)
+	`, types.StatusClosed, now, now, reason, id)
 	if err != nil {
 		return fmt.Errorf("failed to close issue: %w", err)
 	}
@@ -1068,7 +1069,7 @@ func scanIssueRow(row scanner) (*types.Issue, error) {
 	var sourceRepo sql.NullString
 	var compactedAtCommit sql.NullString
 	var closeReason sql.NullString
-	var deletedAt sql.NullTime
+	var deletedAt sql.NullString // TEXT column, not DATETIME - must parse manually
 	var deletedBy sql.NullString
 	var deleteReason sql.NullString
 	var originalType sql.NullString
@@ -1116,9 +1117,7 @@ func scanIssueRow(row scanner) (*types.Issue, error) {
 	if closeReason.Valid {
 		issue.CloseReason = closeReason.String
 	}
-	if deletedAt.Valid {
-		issue.DeletedAt = &deletedAt.Time
-	}
+	issue.DeletedAt = parseNullableTimeString(deletedAt)
 	if deletedBy.Valid {
 		issue.DeletedBy = deletedBy.String
 	}

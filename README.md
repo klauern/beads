@@ -5,6 +5,7 @@
 [![npm version](https://img.shields.io/npm/v/@beads/bd)](https://www.npmjs.com/package/@beads/bd)
 [![CI](https://img.shields.io/github/actions/workflow/status/steveyegge/beads/ci.yml?branch=main&label=tests)](https://github.com/steveyegge/beads/actions/workflows/ci.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/steveyegge/beads)](https://goreportcard.com/report/github.com/steveyegge/beads)
+[![Git Worktrees](https://img.shields.io/badge/git-worktrees-🚧-orange)](docs/WORKTREES.md)
 [![License](https://img.shields.io/github/license/steveyegge/beads)](LICENSE)
 [![PyPI](https://img.shields.io/pypi/v/beads-mcp)](https://pypi.org/project/beads-mcp/)
 
@@ -60,6 +61,7 @@ Agents report that they enjoy working with Beads, and they will use it spontaneo
 - 🌍 **Distributed by design** - Agents on multiple machines share one logical database via git
 - 🚀 **Optional Agent Mail** - Real-time multi-agent coordination (<100ms vs 2-5s git sync, 98.5% reduction in git traffic)
 - 🔐 **Protected branch support** - Works with GitHub/GitLab protected branches via separate sync branch
+- 🌳 **Git worktree compatible** - Enhanced support for git worktrees with shared database architecture
 - 🏗️ **Extensible** - Add your own tables to the SQLite database
 - 🔍 **Multi-project isolation** - Each project gets its own database, auto-discovered by directory
 - 🌲 **Dependency trees** - Visualize full dependency graphs
@@ -164,7 +166,7 @@ echo -e "\nBEFORE ANYTHING ELSE: run 'bd onboard' and follow the instructions" >
 ```bash
 git config merge.beads.driver "bd merge %A %O %A %B"
 git config merge.beads.name "bd JSONL merge driver"
-echo ".beads/beads.jsonl merge=beads" >> .gitattributes
+echo ".beads/issues.jsonl merge=beads" >> .gitattributes
 ```
 
 ### Files Created by `bd init`
@@ -173,7 +175,7 @@ echo ".beads/beads.jsonl merge=beads" >> .gitattributes
 
 **Should be committed to git:**
 - `.gitattributes` - Configures git merge driver for intelligent JSONL merging (critical for team collaboration)
-- `.beads/beads.jsonl` - Issue data in JSONL format (source of truth, synced via git)
+- `.beads/issues.jsonl` - Issue data in JSONL format (source of truth, synced via git)
 - `.beads/deletions.jsonl` - Deletion manifest for cross-clone propagation (tracks deleted issues)
 - `.beads/config.yaml` - Repository configuration template
 - `.beads/README.md` - Documentation about beads for repository visitors
@@ -835,6 +837,7 @@ For advanced usage, see:
 - **[bdui](https://github.com/assimelha/bdui)** - Real-time terminal UI with kanban board, tree view, dependency graph, and statistics dashboard. Vim-style navigation, search/filter, themes, and native notifications. Built by [@assimelha](https://github.com/assimelha).
 - **[perles](https://github.com/zjrosen/perles)** - Terminal UI with BQL (Beads Query Language) for local search and multi-view kanban boards with custom colors. Built by [@zjrosen](https://github.com/zjrosen).
 - **[vscode-beads](https://marketplace.visualstudio.com/items?itemName=planet57.vscode-beads)** - VS Code extension with issues panel, details view, and daemon management. Built by [@jdillon](https://github.com/jdillon).
+- **[beads_viewer](https://github.com/Dicklesworthstone/beads_viewer)** - keyboard-driven terminal UI with kanban board, insights panel, and graph view
 
 Have you built something cool with bd? [Open an issue](https://github.com/steveyegge/beads/issues) to get it featured here!
 

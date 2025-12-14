@@ -11,6 +11,23 @@ import (
 	"github.com/steveyegge/beads/internal/types"
 )
 
+// parseNullableTimeString parses a nullable time string from database TEXT columns.
+// The ncruces/go-sqlite3 driver only auto-converts TEXT→time.Time for columns declared
+// as DATETIME/DATE/TIME/TIMESTAMP. For TEXT columns (like deleted_at), we must parse manually.
+// Supports RFC3339, RFC3339Nano, and SQLite's native format.
+func parseNullableTimeString(ns sql.NullString) *time.Time {
+	if !ns.Valid || ns.String == "" {
+		return nil
+	}
+	// Try RFC3339Nano first (more precise), then RFC3339, then SQLite format
+	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02 15:04:05"} {
+		if t, err := time.Parse(layout, ns.String); err == nil {
+			return &t
+		}
+	}
+	return nil // Unparseable - shouldn't happen with valid data
+}
+
 // REMOVED (bd-8e05): getNextIDForPrefix and AllocateNextID - sequential ID generation
 // no longer needed with hash-based IDs
 // Migration functions moved to migrations.go (bd-fc2d, bd-b245)
@@ -158,7 +175,7 @@ func (s *SQLiteStorage) GetIssue(ctx context.Context, id string) (*types.Issue, 
 	var originalSize sql.NullInt64
 	var sourceRepo sql.NullString
 	var closeReason sql.NullString
-	var deletedAt sql.NullTime
+	var deletedAt sql.NullString // TEXT column, not DATETIME - must parse manually
 	var deletedBy sql.NullString
 	var deleteReason sql.NullString
 	var originalType sql.NullString
@@ -220,9 +237,7 @@ func (s *SQLiteStorage) GetIssue(ctx context.Context, id string) (*types.Issue, 
 	if closeReason.Valid {
 		issue.CloseReason = closeReason.String
 	}
-	if deletedAt.Valid {
-		issue.DeletedAt = &deletedAt.Time
-	}
+	issue.DeletedAt = parseNullableTimeString(deletedAt)
 	if deletedBy.Valid {
 		issue.DeletedBy = deletedBy.String
 	}
@@ -331,7 +346,7 @@ func (s *SQLiteStorage) GetIssueByExternalRef(ctx context.Context, externalRef s
 	var compactedAtCommit sql.NullString
 	var sourceRepo sql.NullString
 	var closeReason sql.NullString
-	var deletedAt sql.NullTime
+	var deletedAt sql.NullString // TEXT column, not DATETIME - must parse manually
 	var deletedBy sql.NullString
 	var deleteReason sql.NullString
 	var originalType sql.NullString
@@ -391,9 +406,7 @@ func (s *SQLiteStorage) GetIssueByExternalRef(ctx context.Context, externalRef s
 	if closeReason.Valid {
 		issue.CloseReason = closeReason.String
 	}
-	if deletedAt.Valid {
-		issue.DeletedAt = &deletedAt.Time
-	}
+	issue.DeletedAt = parseNullableTimeString(deletedAt)
 	if deletedBy.Valid {
 		issue.DeletedBy = deletedBy.String
 	}
@@ -487,10 +500,13 @@ func manageClosedAt(oldIssue *types.Issue, updates map[string]interface{}, setCl
 		setClauses = append(setClauses, "closed_at = ?")
 		args = append(args, now)
 	} else if oldIssue.Status == types.StatusClosed {
-		// Changing from closed to something else: clear closed_at
+		// Changing from closed to something else: clear closed_at and close_reason
 		updates["closed_at"] = nil
 		setClauses = append(setClauses, "closed_at = ?")
 		args = append(args, nil)
+		updates["close_reason"] = ""
+		setClauses = append(setClauses, "close_reason = ?")
+		args = append(args, "")
 	}
 
 	return setClauses, args
@@ -793,10 +809,14 @@ func (s *SQLiteStorage) CloseIssue(ctx context.Context, id string, reason string
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	// NOTE: close_reason is stored in two places:
+	// 1. issues.close_reason - for direct queries (bd show --json, exports)
+	// 2. events.comment - for audit history (when was it closed, by whom)
+	// Keep both in sync. If refactoring, consider deriving one from the other.
 	result, err := tx.ExecContext(ctx, `
-		UPDATE issues SET status = ?, closed_at = ?, updated_at = ?
+		UPDATE issues SET status = ?, closed_at = ?, updated_at = ?, close_reason = ?
 		WHERE id = ?
-	`, types.StatusClosed, now, now, id)
+	`, types.StatusClosed, now, now, reason, id)
 	if err != nil {
 		return fmt.Errorf("failed to close issue: %w", err)
 	}
@@ -860,9 +880,12 @@ func (s *SQLiteStorage) CreateTombstone(ctx context.Context, id string, actor st
 	originalType := string(issue.IssueType)
 
 	// Convert issue to tombstone
+	// Note: closed_at must be set to NULL because of CHECK constraint:
+	// (status = 'closed') = (closed_at IS NOT NULL)
 	_, err = tx.ExecContext(ctx, `
 		UPDATE issues
 		SET status = ?,
+		    closed_at = NULL,
 		    deleted_at = ?,
 		    deleted_by = ?,
 		    delete_reason = ?,
@@ -1178,20 +1201,23 @@ func (s *SQLiteStorage) executeDelete(ctx context.Context, tx *sql.Tx, inClause 
 	for rows.Next() {
 		var id, issueType string
 		if err := rows.Scan(&id, &issueType); err != nil {
-			rows.Close()
+			_ = rows.Close() // #nosec G104 - error handling not critical in error path
 			return fmt.Errorf("failed to scan issue type: %w", err)
 		}
 		issueTypes[id] = issueType
 	}
-	rows.Close()
+	_ = rows.Close()
 
 	// 3. Convert issues to tombstones (only for issues that exist)
+	// Note: closed_at must be set to NULL because of CHECK constraint:
+	// (status = 'closed') = (closed_at IS NOT NULL)
 	now := time.Now()
 	deletedCount := 0
 	for id, originalType := range issueTypes {
 		execResult, err := tx.ExecContext(ctx, `
 			UPDATE issues
 			SET status = ?,
+			    closed_at = NULL,
 			    deleted_at = ?,
 			    deleted_by = ?,
 			    delete_reason = ?,
