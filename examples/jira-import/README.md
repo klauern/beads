@@ -2,12 +2,31 @@
 
 Two-way synchronization between Jira and bd (beads).
 
-## Scripts
+## Built-in Integration
+
+As of v0.42.0, **pulling issues from Jira is built into the `bd` binary** - no Python scripts required!
+
+```bash
+# Configure once
+bd config set jira.url "https://company.atlassian.net"
+bd config set jira.project "PROJ"
+bd config set jira.api_token "YOUR_TOKEN"
+bd config set jira.username "your@email.com"  # Required for Jira Cloud
+
+# Pull issues from Jira
+bd jira sync --pull
+```
+
+## Python Scripts (Legacy/Advanced)
+
+The Python scripts in this directory provide additional flexibility for advanced use cases:
 
 | Script | Purpose |
 |--------|---------|
-| `jira2jsonl.py` | **Import** - Fetch Jira issues into bd |
-| `jsonl2jira.py` | **Export** - Push bd issues to Jira |
+| `jira2jsonl.py` | **Import** - Standalone script for manual JSONL generation |
+| `jsonl2jira.py` | **Export** - Push bd issues to Jira (still required for --push) |
+
+**Note:** `bd jira sync --push` still requires `jsonl2jira.py`. Consider placing it in `examples/jira-import/` relative to your working directory.
 
 ## Overview
 
